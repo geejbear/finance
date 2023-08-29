@@ -40,11 +40,12 @@ def index():
     else:
         portfolio_rows = db.execute("SELECT symbol, name, shares, price, total FROM portfolio WHERE clientid = ?", session["user_id"])
         elements = portfolio_rows[0].keys()
-        values = portfolio_rows[0].values()
+        values = portfolio_rows
 
         users_rows = db.execute("SELECT cash FROM users WHERE id = ?", session["user_id"])
-        total = float(users_rows[0]["cash"]) + float(portfolio_rows[0]["price"])
-        cash = "{:.2f}".format(users_rows[0]["cash"])
+        total_shares = [dict["total"] for dict in portfolio_rows]
+        total = "{:.2f}".format(float(users_rows[0]["cash"]) + float(sum(total_shares)))
+        cash = "{:.2f}".format(float(float(total) - float(sum(total_shares))))
         return render_template("index.html", elements=elements, values=values, cash=cash, total=total)
     ## return apology("TODO")
 
@@ -57,31 +58,36 @@ def buy():
         return render_template("buy.html")
     
     elif request.method == "POST":
+        # don't touch this code
         symbol = request.form.get("symbol")
         shares = request.form.get("shares")
         rows = lookup(symbol)
         current_user = db.execute("SELECT * FROM users")
-        available_cash = float(current_user[0]["cash"]) 
-        subtotal = float(shares) * rows["price"] 
-        total = "{:.2f}".format(subtotal)
 
+        available_cash = float(current_user[0]["cash"]) 
+        total_shares = "{:.2f}".format(float(shares) * rows["price"]) 
+
+        #you may touch starting from this line (with caution)        
         if rows == None:
             return apology("Symbol not found", 400)
-        elif available_cash - rows["price"] < 0:
+        elif available_cash - float(total_shares) < 0:
             return apology("Not enough cash", 400)
         else:
-            remaining_cash = available_cash - rows["price"] 
+            remaining_cash = available_cash - float(total_shares) 
             db.execute("UPDATE users SET cash = ?", remaining_cash)
 
             if current_user[0]["cash"] == 10000.00:
                 db.execute("UPDATE portfolio SET name = ?, symbol = ?, shares = ?, price = ?, total = ? WHERE clientid = ?",
-                            rows["name"], rows["symbol"], shares, rows["price"], total, int(current_user[0]["id"])) 
+                            rows["name"], rows["symbol"], shares, rows["price"], total_shares, int(current_user[0]["id"])) 
             else:
                 db.execute(
                     '''INSERT INTO portfolio (name, symbol, shares, price, total, clientid) VALUES(?, ?, ?, ?, ?, ?)''', 
                             rows["name"], rows["symbol"], shares, rows["price"], 
-                            total, int(current_user[0]["id"])
+                            total_shares, int(current_user[0]["id"])
                 )
+                ##update cash and total
+
+
             return redirect("/")
 
 
