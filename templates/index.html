@@ -14,15 +14,30 @@
                     {% endfor %}
                 </tr>
             </thead>
+            {% for value in values %}
            <tbody>
                 
                     <tr class="text-start">
-                        {% for value in values %}
-                        <td class="text-start">{{ value }}</td>
-                        {% endfor %}
+                        <td class="text-start">
+                            {{ value.symbol }}
+                        </td>
+                        <td lass="text-start">
+                            {{ value.name }}
+                        </td>
+                        <td lass="text-start">
+                            {{ value.shares }}
+                        </td>
+                        <td lass="text-start">
+                            {{ value.price }}
+                        </td>
+                        <td lass="text-start">
+                            {{ value.total }}
+                        </td>
                     </tr>
+                    
                 
             </tbody>
+            {% endfor %}
             <tfoot>
                 <tr>
                     <td class="border-0 fw-bold text-end" colspan="4">Cash</td>

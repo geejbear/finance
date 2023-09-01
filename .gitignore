@@ -1,0 +1,13 @@
+*.md
+
+*.o
+
+*.DS_Store
+
+*.db
+
+*.sqlite3
+
+flask_session/
+
+
