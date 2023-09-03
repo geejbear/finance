@@ -6,6 +6,7 @@ import subprocess
 import urllib
 import uuid
 
+
 from flask import redirect, render_template, session
 from functools import wraps
 
@@ -76,3 +77,12 @@ def lookup(symbol):
 def usd(value):
     """Format value as USD."""
     return f"${value:,.2f}"
+
+
+def update_history(symbol, shares, transaction, database, key):
+    if key == "sell":
+        transaction = "+ " + str(transaction)
+    else:
+        transaction = "- " + str(transaction)
+    time = datetime.datetime.now().replace(microsecond=0)
+    database.execute("INSERT INTO history (time, symbol, shares, trans, activity_id) VALUES(?, ?, ?, ?, ?)", time, symbol, shares, transaction, session["user_id"])

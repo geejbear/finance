@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    history
+{% endblock %}
+
+{% block main %}
+    <form action="/history" method="get">
+        <table class="table table-striped">
+            <thead>
+                <tr class="text-start">
+                    {% for element in elements %}
+                        <th>{{ element }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            {% for value in values %}
+           <tbody>
+                
+                    <tr class="text-start">
+                        <td class="text-start">
+                            {{ value.time }}
+                        </td>
+                        <td lass="text-start">
+                            {{ value.symbol }}
+                        </td>
+                        <td lass="text-start">
+                            {{ value.shares }}
+                        </td>
+                        <td lass="text-start">
+                            {{ value.trans }}
+                        </td>
+                    </tr>
+                
+            </tbody>
+            {% endfor %}
+        </table>
+    
+{% endblock %}

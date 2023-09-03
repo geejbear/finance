@@ -5,7 +5,7 @@ from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from helpers import apology, login_required, lookup, usd
+from helpers import apology, login_required, lookup, usd, update_history
 
 # Configure application
 app = Flask(__name__)
@@ -35,21 +35,17 @@ def after_request(response):
 @login_required
 def index():
     """Show portfolio of stocks"""
-    if not session["user_id"]:
-        return redirect("/login")
-    else:
-        portfolio_rows = db.execute("SELECT symbol, name, shares, price, total FROM portfolio WHERE clientid = ?", session["user_id"])
-        users_rows = db.execute("SELECT * FROM users WHERE id = ?", session["user_id"])
-        elements = ["Symbol", "Name", "Shares", "Price", "Total"]
-        if not portfolio_rows:
-            return render_template("index.html", cash=float(users_rows[0]["cash"]), elements=elements)
-        else:
-            values = portfolio_rows
+    portfolio_rows = db.execute("SELECT symbol, name, shares, price, total FROM portfolio WHERE clientid = ?", session["user_id"])
+    users_rows = db.execute("SELECT * FROM users WHERE id = ?", session["user_id"])
+    elements = ["Symbol", "Name", "Shares", "Price", "Total"]
+    if not portfolio_rows:
+        return render_template("index.html", cash=float(users_rows[0]["cash"]), elements=elements)
 
-            bought_shares = [dict["total"] for dict in portfolio_rows]
-            total = "{:.2f}".format(float(users_rows[0]["cash"]) + float(sum(bought_shares)))
-            cash = "{:.2f}".format(float(float(total) - float(sum(bought_shares))))
-        return render_template("index.html", elements=elements, values=values, cash=cash, total=total)
+    values = portfolio_rows
+    bought_shares = [dict["total"] for dict in portfolio_rows]
+    total = "{:.2f}".format(float(users_rows[0]["cash"]) + float(sum(bought_shares)))
+    cash = "{:.2f}".format(float(float(total) - float(sum(bought_shares))))
+    return render_template("index.html", elements=elements, values=values, cash=cash, total=total)
     
 
 
@@ -61,6 +57,7 @@ def buy():
         return render_template("buy.html")
     
     elif request.method == "POST":
+        key = "buy"
         symbol_rows = lookup(request.form.get("symbol"))
         shares_to_buy = str(request.form.get("shares")) 
         if symbol_rows == None: 
@@ -68,7 +65,7 @@ def buy():
         elif shares_to_buy == "":
             return apology("Cannot by zero shares", 400)
 
-        current_user = db.execute("SELECT * FROM users")
+        current_user = db.execute("SELECT * FROM users WHERE id = ?", session["user_id"])
         available_cash = float(current_user[0]["cash"]) 
         bought_shares = "{:.2f}".format(float(shares_to_buy) * (symbol_rows["price"]))
         portfolio = db.execute("SELECT * FROM portfolio WHERE clientid = ?", session["user_id"])
@@ -89,12 +86,14 @@ def buy():
             existing_shares = float(portfolio[0]["shares"])
             current_num_of_shares = existing_shares + float(request.form.get("shares"))
             bought_shares = "{:.2}".format(current_num_of_shares * float(symbol_rows["price"]))
-            db.execute( '''UPDATE portfolio SET shares = ?, total = ? WHERE symbol = ?''',
-                  current_num_of_shares, bought_shares, symbol_rows["symbol"]
+            db.execute( '''UPDATE portfolio SET shares = ?, total = ? WHERE symbol = ? AND clientid = ?''',
+                  current_num_of_shares, bought_shares, symbol_rows["symbol", portfolio[0]["clientid"]]
             )
             
             remaining_cash = available_cash - float(bought_shares) 
-            db.execute("UPDATE users SET cash = ?", remaining_cash)
+            db.execute("UPDATE users SET cash = ? WHERE id = ?", remaining_cash, session["user_id"])
+            
+            update_history(symbol_rows["symbol"], shares_to_buy, bought_shares, db)
             return redirect("/")
         else:
             db.execute(
@@ -103,7 +102,10 @@ def buy():
                         bought_shares, int(current_user[0]["id"])
             )
             remaining_cash = available_cash - float(bought_shares) 
-            db.execute("UPDATE users SET cash = ?", remaining_cash)
+            db.execute("UPDATE users SET cash = ? WHERE id = ?", remaining_cash, session["user_id"])
+            
+            update_history(symbol_rows["symbol"], shares_to_buy, bought_shares, db, key)
+        
         return redirect("/")
 
 
@@ -111,7 +113,9 @@ def buy():
 @login_required
 def history():
     """Show history of transactions"""
-    return apology("TODO")
+    elements = ["Time", "Symbol", "Shares", "Transaction"]
+    values = db.execute("SELECT time, symbol, shares, trans FROM history WHERE activity_id = ?", session["user_id"])
+    return render_template("history.html", elements=elements, values=values)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -209,20 +213,20 @@ def register():
 def sell():
     """Sell shares of stock"""
     if request.method == "GET":
-        data_rows = db.execute("SELECT symbol FROM portfolio")
+        data_rows = db.execute("SELECT symbol FROM portfolio WHERE clientid = ?", session["user_id"])
         all_symbols = [dict["symbol"] for dict in data_rows]
         return render_template("sell.html", symbols=all_symbols)
     elif request.method == "POST":
+        key = "sell"
         ## get symbols and shares
         price = db.execute("SELECT price FROM portfolio WHERE symbol = ?", request.form.get("symbol"))
 
         #updating database 
-        bought_shares = db.execute("SELECT shares FROM portfolio WHERE symbol = ?", request.form.get("symbol"))
+        bought_shares = db.execute("SELECT shares FROM portfolio WHERE symbol = ? AND clientid = ?", request.form.get("symbol"), session["user_id"])
         currect_num_of_shares = float(bought_shares[0]["shares"]) - float(request.form.get("shares"))
         if currect_num_of_shares < 0:
             return apology("Too many shares", 400)
-        elif currect_num_of_shares == 0:
-            db.execute("DELETE FROM portfolio WHERE symbol = ?", request.form.get("symbol"))
+       
         # upadate new total from shares
         bought_shares = "{:.2f}".format(currect_num_of_shares * float(price[0]["price"]))
 
@@ -231,10 +235,14 @@ def sell():
         remainig_cash = "{:.2f}".format(float(available_cash[0]["cash"]) + (float(int(request.form.get("shares")) * float(price[0]["price"]))))
 
         
-        db.execute("UPDATE portfolio SET shares = ?, total = ? WHERE symbol = ?", currect_num_of_shares, bought_shares, request.form.get("symbol"))
+        db.execute("UPDATE portfolio SET shares = ?, total = ? WHERE symbol = ? AND clientid = ?", currect_num_of_shares, bought_shares, request.form.get("symbol"), session["user_id"])
         db.execute("UPDATE users SET cash = ? WHERE id = ?", remainig_cash,  int(session["user_id"]))
         # update client-side
 
         # if all sold, maybe a python function to set rows to NULL, rather than
         ## having no data?
+        sold_shares = "{:.2f}".format(float(request.form.get("shares")) * float(price[0]["price"]))
+        update_history(request.form.get("symbol"), request.form.get("shares"), sold_shares, db, key)
+        if currect_num_of_shares == 0:
+            db.execute("DELETE FROM portfolio WHERE symbol = ? AND clientid = ?", request.form.get("symbol"), session["user_id"])
         return redirect("/")
